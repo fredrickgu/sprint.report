@@ -1,0 +1,296 @@
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+    <style type="text/css">
+        body {
+            text-align: left;
+        }
+        div.chart {
+            float: left;
+            margin-right: 10px;
+            width: 700px;
+            height: 500px;
+        }
+        table#queryContent,th,td{
+            border-collapse: collapse;
+            border: 1px solid #5BADFF;
+        }
+    </style>
+    <script type="text/javascript" src="/apps/1.33/sdk.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/canvasjs/1.7.0/canvasjs.min.js"></script>
+    <script type="text/javascript" >
+    
+        var objRallyDataSource;
+
+        function safeJson(object, propertyName){
+            var value = object[propertyName];
+            if (value!==null) return value;
+            else return "";
+        }
+        function runAllowedValuesQuery() {
+            var queryArray = [];
+            queryArray[0] = {
+                key: 'priorities',
+                type: 'Defect',
+                attribute: 'Priority'
+            };
+            queryArray[1] = {
+                key: 'severities',
+                type: 'Defect',
+                attribute: 'Severity'
+            };
+            objRallyDataSource.findAll(queryArray, runDefectQuery);
+        }
+        function runDefectQuery(allowedValuesResult) {
+            var priorities = removeEmptyValues(allowedValuesResult.priorities);
+            var severities = removeEmptyValues(allowedValuesResult.severities);
+            var defectQuery = buildDefectQuery(priorities, severities);
+            var callback = function(results) {
+                showResults(priorities, severities, results);
+            };
+            objRallyDataSource.findAll(defectQuery, callback);
+        }
+        function removeEmptyValues(arr) {
+            var nonEmpty = [];
+            for (var i = 0; i < arr.length; i++) {
+                if (arr[i]) {
+                    nonEmpty.push(arr[i]);
+                }
+            }
+            return nonEmpty;
+        }
+        function buildDefectQuery(priorities, severities) {
+            var defectQueryArray = [];
+            var count = 0;
+            for (var i = 0; i < priorities.length; i++) {
+                var keyName = "pri" + i;
+                defectQueryArray[count++] = {
+                    key: "#" + keyName,
+                    type: "defect",
+                    fetch: false,
+                    query: "((State != Closed) and (Priority = \"" + priorities[i] + "\"))"
+                }
+                defectQueryArray[count++] = {
+                    key: keyName,
+                    placeholder: "${#pri" + i + "/size}"
+                }
+            }
+            for (var i = 0; i < severities.length; i++) {
+                var keyName = "sev" + i;
+                defectQueryArray[count++] = {
+                    key: "#" + keyName,
+                    type: "defect",
+                    fetch: false,
+                    query: "((State != Closed) and (Severity = \"" + severities[i] + "\"))"
+                }
+                defectQueryArray[count++] = {
+                    key: keyName,
+                    placeholder: "${#sev" + i + "/size}"
+                }
+            }
+            return defectQueryArray;
+        }
+        function collectValuesByPrefix(results, prefix, numKeys) {
+            var values = [];
+            for (var i = 0; i < numKeys; i++) {
+                values[i] = results[prefix + i];
+            }
+            return values;
+        }
+        function showResults(priorities, severities, results) {
+            var priorityValues = collectValuesByPrefix(results, 'pri', priorities.length);
+            var piePriData = [];
+            for (var i=0; i<priorityValues.length; i++) {
+                piePriData[i] = {
+                    y:priorityValues[i],
+                    label:priorities[i],
+                    legendText:priorities[i]
+                };
+            }
+            drawPieChart("priority", piePriData);
+            var severityValues = collectValuesByPrefix(results, 'sev', severities.length);
+            var pieSevData = [];
+            for (var i=0; i<severityValues.length; i++) {
+                pieSevData[i] = {
+                    y:severityValues[i],
+                    label:severities[i],
+                    legendText:severities[i]
+                };
+            }
+            drawPieChart("severity", pieSevData);
+        }
+        function drawPieChart(chartId, pieChartData) {
+            var chart = new CanvasJS.Chart(chartId+"Chart",
+            {
+                exportFileName: "PieChart",
+                exportEnabled: true,
+                animationEnabled: false,
+                legend:{
+                    verticalAlign: "bottom",
+                    horizontalAlign: "center"
+                },
+                data: [
+                {
+                    type: "pie",
+                    showInLegend: true,
+                    toolTipContent: "{legendText}: <strong>{y}</TagArray>",
+                    indexLabel: "{label} {y}",
+                    dataPoints: pieChartData,
+                    click: function(e){
+                        var label = e.dataPoint.label;
+                        var value = e.dataPoint.y;
+                        var chartType = chartId;
+                        var queryConfig;
+                        if (chartType.startsWith("priority")){
+                            queryConfig =
+                            {
+                                key   : "defects",
+                                type  : "Defect",
+                                fetch : "ObjectID,FormattedID,Name,Tags,Owner",
+                                query : '((State != Closed) AND (Priority = "'+label+'"))'
+                            };
+                        }else if (chartType.startsWith("severity")){
+                            queryConfig =
+                            {
+                                key   : "defects",
+                                type  : "Defect",
+                                fetch : "ObjectID,FormattedID,Name,Tags,Owner",
+                                query : '((State != Closed) AND (Severity = "'+label+'"))'
+                            };
+                        }
+
+                        objRallyDataSource.findAll(queryConfig, showDefectsList);
+                        var paragraph = document.getElementById("querySummary");
+                        paragraph.innerText = queryConfig.query;
+                    }
+                }]
+            });
+            chart.render();
+        }
+        function showDefectsList(results) {
+            //"ObjectID,FormattedID,Name,Tags,Owner",
+            var defectList = results.defects;
+            var resultTable = document.getElementById("queryContent");
+            resultTable.innerHTML = "";
+
+            var theadHead = document.createElement('thead');
+            var headTr = document.createElement('tr');
+            var headThId = document.createElement('th'); headThId.innerText = "ID";
+            var headThOwner = document.createElement('th'); headThOwner.innerText = "Owner";
+            var headThDesp = document.createElement('th'); headThDesp.innerText = "Description";
+            var headThTags = document.createElement('th'); headThTags.innerText = "Tags";
+            headTr.appendChild(headThId);
+            headTr.appendChild(headThOwner);
+            headTr.appendChild(headThDesp);
+            headTr.appendChild(headThTags);
+            theadHead.appendChild(headTr);
+            resultTable.appendChild(theadHead);
+
+            var tbodyBody = document.createElement('tbody');
+            for(var i=0; i<defectList.length; i++){
+                var newRow = tbodyBody.insertRow(0);
+
+                var tagsValue = "";
+                if ("Tags" in defectList[i]){
+                    var TagNames = [];
+                    if ("length" in defectList[i].Tags) {
+                        for(var j=0; j<defectList[i].Tags.length; j++){
+                            var tagName = defectList[i].Tags[j]._refObjectName;
+                            TagNames[j] = "["+tagName+"]";
+                        }
+                    }
+                    tagsValue = TagNames.join(" ");
+                }
+                var tagsCell = newRow.insertCell(0);
+                tagsCell.innerText = tagsValue;
+
+                var nameCell = newRow.insertCell(0);
+                nameCell.innerText = safeJson(defectList[i], "Name");
+
+                var Owner = safeJson(defectList[i], "Owner");
+                var userCell = newRow.insertCell(0);
+                userCell.innerText = safeJson(Owner, "_refObjectName");
+
+                var formattedId = safeJson(defectList[i], "FormattedID");
+                var formattedIdCell = newRow.insertCell(0);
+                formattedIdCell.innerHTML = "<a href='"+getDefectHyperlink(formattedId)+"'>"+formattedId+"</a>";
+            }
+            resultTable.appendChild(tbodyBody);
+            sortDefectTable();
+        }
+
+        function getDefectHyperlink(formattedId) {
+            var ahref = "https://rally1.rallydev.com/#/search?keywords="+formattedId;
+            return ahref;
+        }
+
+        function sortDefectTable(){
+            var resultTable = document.getElementById("queryContent");
+            var arrayHead = resultTable.tHead.getElementsByTagName('th');
+
+            for(var i=0;i<arrayHead.length;i++){
+                arrayHead[i].addEventListener("click", function(){
+                    sortByColumn(this);
+                });
+            }
+        }
+
+        function sortByColumn(tableCell){
+            var resultTable = document.getElementById("queryContent");
+            var arrayHead = resultTable.tHead.getElementsByTagName('th');
+            var arrayRows = resultTable.tBodies[0].getElementsByTagName('tr');
+
+            var arrayRowSort = new Array();
+            for (var i=0; i<arrayRows.length; i++){
+                arrayRowSort[i] = arrayRows[i].cloneNode(true);
+            }
+            
+            var head = arrayHead[tableCell.cellIndex];
+            var sortOrder = (head.className=="asc")?-1:1;
+            head.className = (head.className=="asc")?"des":"asc";
+
+            arrayRowSort.sort(customizedSortFunc(tableCell.cellIndex, sortOrder));
+
+            for(var i=0; i<arrayRows.length; i++){
+                arrayRows[i].parentNode.replaceChild(arrayRowSort[i], arrayRows[i]);
+            }
+        }
+
+        function customizedSortFunc(currentIndex, order){
+            return function(a,b){
+                var aCell = a.cells[currentIndex].innerText;
+                var bCell = b.cells[currentIndex].innerText;
+                return (aCell>bCell)?order:(aCell<bCell)?-order:0;
+            }
+        }
+
+    </script>
+    <script type="text/javascript" >
+        rally.addOnLoad(function(){
+            objRallyDataSource = new rally.sdk.data.RallyDataSource(
+                '__WORKSPACE_OID__',
+                '__PROJECT_OID__',
+                '__PROJECT_SCOPING_UP__',
+                '__PROJECT_SCOPING_DOWN__');
+            runAllowedValuesQuery();
+        });
+
+    </script>
+</Head>
+<body>
+<div class="chart">
+    <h3 align="center">Active Defects by Priority</h3>
+    <div id="priorityChart" ></div>
+    <div id="priorityLegend"></div>
+</div>
+<div class="chart">
+    <h3 align="center">Active Defects by Severity</h3>
+    <div id="severityChart"  ></div>
+    <div id="severityLegend"></div>
+</div>
+<div style="clear:both">
+    <p id="querySummary" ></p>
+    <table id="queryContent" ></table>
+</div>
+</body>
+</html>
