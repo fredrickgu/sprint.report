@@ -1,0 +1,623 @@
+<html>
+<head>
+    <title>Stastics Page</title>
+    <style>
+        div#resultDiv table,th,td{
+            border-collapse: collapse;
+            border: 1px solid
+        }
+        div#resultDiv td.red{background-color: #ff9980}
+        div#resultDiv td.green{background-color: #b3ffb3}
+        div#resultDiv td.yellow{background-color: #ffffb3}
+        div#resultDiv th{
+            background-color: #cce5ff
+        }
+        div#resultDiv div{
+            padding-right:10px;
+            padding-bottom:10px;
+        }
+    </style>
+    <script src="/apps/1.32/sdk.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.min.js"></script>
+    <script type="text/javascript">
+
+    var arrTeam = [];
+    var arrSprint = [];
+    var arrIteration = [];
+    var arrRelease = [];
+    var arrFeature = {};
+    
+    var timeStart;
+    var timeEnd;
+    
+    var idResultDiv = "resultDiv";
+    var rallyDataSource;
+
+    function mainEntrance() {
+
+        var showTable = function(piName){
+            timeEnd = performance.now();
+            updateStatus("Rally query takes "+((timeEnd-timeStart)/1000).toFixed(1)+" seconds.");
+            addHR();
+            showPITable(piName);
+            showGeneralTable(piName);
+            showTeamTable(piName);
+            showFeatureTable(piName);
+        }
+        
+
+        var showPITable = function(piName){
+            var divGeneral = document.getElementById(idResultDiv);
+            var divSub = document.createElement("div");
+            divGeneral.appendChild(divSub);
+
+            var tablePI = document.createElement("table");
+            divSub.appendChild(tablePI);
+            
+            var rowTotalPtPlanned = newRow(newCell("Total Points Planned for "+piName));
+            rowTotalPtPlanned.appendChild(newCell(arrIteration[piName].PlanEstimate.Total));
+            
+            var rowTotalPtAccepted = newRow(newCell("Total Points Accepted for "+piName));
+            rowTotalPtAccepted.appendChild(newCell(arrIteration[piName].Accepted.Total));
+            
+            var rowAcceptedRate = newRow(newCell("% Points Accepted"));
+            rowAcceptedRate.appendChild(newCell(safeRate(arrIteration[piName].Accepted.Total, arrIteration[piName].PlanEstimate.Total)));
+            
+            tablePI.appendChild(rowTotalPtPlanned);
+            tablePI.appendChild(rowTotalPtAccepted);
+            tablePI.appendChild(rowAcceptedRate);
+
+        }
+
+        var showGeneralTable = function(piName){
+            var divGeneral = document.getElementById(idResultDiv);
+            var divSub = document.createElement("div");
+            divGeneral.appendChild(divSub);
+
+            var tableGeneral = document.createElement("table");
+            divSub.appendChild(tableGeneral);
+
+            var rowHeader = newRow(newHeader("General"));
+            var rowTotalVelocity = newRow(newCell("Total Velocity"));
+            var rowPlannedPoints = newRow(newCell("Planned Point"));
+            var rowPlannedVelocity = newRow(newCell("% Planned Velocity"));
+            var rowAcceptedPoints = newRow(newCell("Accepted Points"));
+            var rowPlanRemain = newRow(newCell("Plan Burndown %"));
+            var rowActualRemain = newRow(newCell("Actual Burndown %"));
+
+            tableGeneral.appendChild(rowHeader);
+            tableGeneral.appendChild(rowTotalVelocity);
+            tableGeneral.appendChild(rowPlannedPoints);
+            tableGeneral.appendChild(rowPlannedVelocity);
+            tableGeneral.appendChild(rowAcceptedPoints);
+            tableGeneral.appendChild(rowPlanRemain);
+            tableGeneral.appendChild(rowActualRemain);
+
+            var intSprints = arrSprint.length;
+            var arrPISprint = [];
+            var arrPlanBurndown = [];
+            var arrActualBurndown = [];
+            arrSprint.forEach(function(sprintName){
+                if (isInThisPI(piName, sprintName)){
+
+                    var plannedVelocity = safeRate(arrIteration[sprintName].PlanEstimate.Total, arrIteration[sprintName].Resource.Total);
+                    var plannedBurndown = safeRate(
+                        arrIteration[piName].PlanEstimate.Total-arrIteration[sprintName].CumulativePlannedPoints.Total, 
+                        arrIteration[piName].PlanEstimate.Total);
+                    var actualBurndown = safeRate(
+                        arrIteration[piName].PlanEstimate.Total-arrIteration[sprintName].CumulativeAcceptedPoints.Total, 
+                        arrIteration[piName].PlanEstimate.Total);
+
+                    rowHeader.appendChild(newHeader(sprintName));
+                    rowTotalVelocity.appendChild(newCell(arrIteration[sprintName].Resource.Total.toFixed(1)));
+                    rowPlannedPoints.appendChild(newCell(arrIteration[sprintName].PlanEstimate.Total.toFixed(1)));
+                    rowPlannedVelocity.appendChild(newCell(plannedVelocity));
+                    rowAcceptedPoints.appendChild(newCell(arrIteration[sprintName].Accepted.Total.toFixed(1)));
+                    rowPlanRemain.appendChild(newCell(plannedBurndown));
+                    rowActualRemain.appendChild(newCell(actualBurndown));
+
+                    // data for line chart
+                    arrPISprint.push(sprintName);
+                    arrPlanBurndown.push(parseFloat(plannedBurndown));
+                    arrActualBurndown.push(parseFloat(actualBurndown));
+                }
+            });
+            //draw line chart
+            var divCanvas = document.createElement("div");
+            divSub.appendChild(divCanvas);
+            showLineChart(divCanvas, arrPISprint, arrPlanBurndown, arrActualBurndown);
+        }
+
+        var showTeamTable = function(piName){
+            var divGeneral = document.getElementById(idResultDiv);
+            var oneTimeToken = true;
+            arrTeam.forEach(function(teamName){
+                var divTable = document.createElement("div");
+                divTable.id = piName + "_" + teamName;
+                divGeneral.appendChild(divTable);
+                var tableTeam = document.createElement("table");
+                divTable.appendChild(tableTeam);
+
+                var rowHeader = newRow(newHeader(teamName));
+                var rowOverallStatus = newRow(newCell("Overall Status"));
+                var rowTotalPointsPlannedForPI = newRow(newCell("Total Points Planned for PI "));
+                var rowCumulativePointsAccepted = newRow(newCell("Cumulative Points Accepted"));
+                var rowPointsAcceptedRate = newRow(newCell("% Points Accepted"));
+                var rowPlannedVelocity = newRow(newCell("Planned Velocity for the Sprint"));
+                var rowPointsEstimated = newRow(newCell("Points Estimated for the Sprint"));
+                var rowPointsDelivered = newRow(newCell("Points Delivered for the Sprint"));
+                var rowHighSeverityDefect = newRow(newCell("Open High Severity Defects"));
+
+
+                tableTeam.appendChild(rowHeader);
+                tableTeam.appendChild(rowOverallStatus);
+                tableTeam.appendChild(rowTotalPointsPlannedForPI);
+                tableTeam.appendChild(rowCumulativePointsAccepted);
+                tableTeam.appendChild(rowPointsAcceptedRate);
+                tableTeam.appendChild(rowPlannedVelocity);
+                tableTeam.appendChild(rowPointsEstimated);
+                tableTeam.appendChild(rowPointsDelivered);
+                tableTeam.appendChild(rowHighSeverityDefect);
+
+                arrSprint.forEach(function(sprintName){
+                    var ci = arrIteration[sprintName];
+
+                    if (isInThisPI(piName, sprintName)){
+                        if (oneTimeToken){
+                            //console.log(JSON.stringify(ci));
+                            oneTimeToken = false;
+                        }
+                        var resource = ci.Resource[teamName];
+                        var estimatePointTotal = arrIteration[piName].PlanEstimate[teamName];
+                        var estimatePoint = ci.PlanEstimate[teamName] || 0;
+                        var acceptedPoint = ci.Accepted[teamName] || 0;
+                        var cumulativeAccepted = ci.CumulativeAcceptedPoints[teamName];
+                        var acceptedRate = safeRate(cumulativeAccepted, arrIteration[piName].PlanEstimate[teamName]);
+
+                        rowHeader.appendChild(newHeader(sprintName));
+                        rowOverallStatus.appendChild(newCell(ci.OverallStatus[teamName]));
+                        rowTotalPointsPlannedForPI.appendChild(newCell(estimatePointTotal));
+                        rowCumulativePointsAccepted.appendChild(newCell(cumulativeAccepted));
+                        rowPointsAcceptedRate.appendChild(newCell(acceptedRate));
+                        rowPlannedVelocity.appendChild(newCell(resource));
+                        rowPointsEstimated.appendChild(newCell(Math.round(estimatePoint)));
+                        rowPointsDelivered.appendChild(newCell(Math.round(acceptedPoint)));
+                        rowHighSeverityDefect.appendChild(newCell(ci.HighSeverityDefect[teamName]));
+                    }
+                });
+                
+            });
+        }
+        
+        
+        var showFeatureTable = function(piName){
+            
+            arrTeam.forEach(function(teamName){
+                var divTeam = document.getElementById(piName + "_" + teamName);                
+                var tableTeamFeature = document.createElement("table");
+                divTeam.appendChild(tableTeamFeature);
+                
+                var rowHeader = newRow(newCell("Feature"));
+                rowHeader.appendChild(newCell("Name"));
+                tableTeamFeature.appendChild(rowHeader); 
+                arrSprint.forEach(function(sprintName){
+                    if (isInThisPI(piName, sprintName)){
+                        rowHeader.appendChild(newCell(sprintName));
+                    }
+                });
+                
+                for (var key in arrFeature[teamName]){
+                    var feature = arrFeature[teamName][key];
+                
+                    var rowFeature = newRow(newCell(feature.FormattedID));
+                    rowFeature.appendChild(newCell(feature.Name));
+                    tableTeamFeature.appendChild(rowFeature); 
+                            
+                    arrSprint.forEach(function(sprintName){
+                        if (isInThisPI(piName, sprintName)){
+                            rowFeature.appendChild(newCell("-"));
+                        }
+                    });
+                };
+            });
+        }
+
+        var showLineChart = function(divCanvas, arrLabel, arrData1, arrData2){
+
+            var data = {
+                labels: arrLabel,
+                datasets: [
+                    {
+                        label: "Plan Burndown",
+                        fillColor: "rgba(220,220,220,0.2)",
+                        strokeColor: "rgba(220,220,220,1)",
+                        pointColor: "rgba(220,220,220,1)",
+                        pointStrokeColor: "#fff",
+                        pointHighlightFill: "#fff",
+                        pointHighlightStroke: "rgba(220,220,220,1)",
+                        data: arrData1
+                    },
+                    {
+                        label: "Actual Burndown",
+                        fillColor: "rgba(151,187,205,0.2)",
+                        strokeColor: "rgba(151,187,205,1)",
+                        pointColor: "rgba(151,187,205,1)",
+                        pointStrokeColor: "#fff",
+                        pointHighlightFill: "#fff",
+                        pointHighlightStroke: "rgba(151,187,205,1)",
+                        data: arrData2
+                    }
+                ]
+            };
+
+            var options = {
+                scaleShowGridLines : true,
+                scaleGridLineColor : "rgba(0,0,0,.05)",
+                scaleGridLineWidth : 1,
+                scaleShowHorizontalLines: true,
+                scaleShowVerticalLines: true,
+                bezierCurve : false,
+                bezierCurveTension : 0.4,
+                pointDot : true,
+                pointDotRadius : 4,
+                pointDotStrokeWidth : 1,
+                pointHitDetectionRadius : 20,
+                datasetStroke : true,
+                datasetStrokeWidth : 2,
+                datasetFill : true,
+                legendTemplate : ""
+            };
+
+            var canvasRef = document.createElement("canvas");
+            canvasRef.width = "800";
+            canvasRef.height = "300";
+            divCanvas.appendChild(canvasRef);
+            var ctx = canvasRef.getContext("2d");
+            var lineChart = new Chart(ctx).Line(data, options);
+        }
+
+        var newCell = function(text){
+            var cellRef = document.createElement("td");
+            cellRef.innerText = text;
+            switch(text){
+                case "Success":
+                    cellRef.className  = "green";
+                    break;
+                case "Failure":
+                    cellRef.className  = "red";
+                    break;
+                case "N/A":
+                case "???":
+                    cellRef.className  = "yellow";
+                    break;
+            }
+            return cellRef;
+        }
+
+        var newHeader = function(text){
+            var headerRef = document.createElement("th");
+            headerRef.innerText = text;
+            return headerRef;
+        }
+
+        var newRow = function(cellRef){
+            var rowRef = document.createElement("tr");
+            rowRef.appendChild(cellRef)
+            return rowRef;
+        }
+        
+        var safeRate = function(nume, deno){
+            if (!isNaN(nume) && !isNaN(deno)){
+                var numerator = parseFloat(nume);
+                var denominator = parseFloat(deno);
+                if (denominator===0) {return " ";}
+                else {
+                    var rate = numerator / denominator * 100;
+                    return Math.round(rate)+"%";
+                }
+            } else return " ";
+        }
+
+        var isInThisPI = function(piName, sprintName){
+            var sprintPIName = sprintName.substr(1, 5);
+            if (piName==sprintPIName) return true;
+            else return false;
+        }
+
+        var addHR = function(){
+            var hr = document.createElement("hr");
+            var resultDiv = document.getElementById(idResultDiv);
+            resultDiv.appendChild(hr);
+        }
+
+        var updateStatus = function(status){
+            var pStatus = document.getElementById("status");
+            pStatus.innerText = status;
+        }
+
+        var extractStatus = function(notes){
+            var lowerNotes = notes.toLowerCase();
+            var hasSuccess = lowerNotes.indexOf("success")>-1 || lowerNotes.indexOf("succeed")>-1;
+            var hasFailure = lowerNotes.indexOf("fail")>-1;
+            if (hasSuccess && hasFailure) {return "???";}
+            else if (hasSuccess) {return "Success"}
+            else if (hasFailure) {return "Failure"}
+            else {return "N/A"}
+        }
+        
+        var getPIName = function(sprintName){
+            if (sprintName.length>5){return sprintName.substr(1, 5)}
+            else return "";
+        }
+                
+        var getReleaseData = function(results){
+            for (var i=0; i<results.length; i++){
+                var release = results[i];
+                var releaseName = release.Name;
+                // only select PI 11 12 13 ...
+                if (releaseName.length >= 5){
+                    var piNumber = parseInt(releaseName.substr(3, 2));
+                    if (piNumber > 10){
+                        var piName = releaseName.substr(0, 5);
+                        if (arrRelease.indexOf(piName)==-1){arrRelease.push(piName)}
+                    }
+                }
+            }
+        }
+        
+        var getFeatureData = function(results){            
+            arrTeam.forEach(function(teamName){
+                arrFeature[teamName] = [];
+            });
+            
+            var count = 0;
+            results.forEach(function(feature){
+                console.log(feature);
+                
+                var teamName = feature.Project.Name;
+                if (arrTeam.indexOf(teamName)>-1){
+                    if (count==1){
+                        //console.log(feature);
+                    }
+                    count++;
+                    arrFeature[teamName][feature.FormattedID] = {
+                        "FormattedID": feature.FormattedID,
+                        "Name": feature.Name,
+                        "Project": feature.Project
+                    };
+                }
+            });
+            //console.log("total feature: "+count);
+        };
+        
+        var getFeatureHistoricalData = function(){
+            var oneTimeToken = true;
+            arrTeam.forEach(function(teamName){
+                //console.log(teamName);
+                for (var key in arrFeature[teamName]){
+                    var feature = arrFeature[teamName][key];
+                    var payload = {
+                        "find": {
+                            "FormattedID": feature.FormattedID
+                        },
+                        "fields": [
+                            "_ValidFrom",
+                            "_ValidTo",
+                            "ObjectID",
+                            "FormattedID",
+                            "Release",
+                            "PercentDoneByStoryCount",
+                            "PercentDoneByStoryPlanEstimate"
+                        ],
+                        "compress": true
+                    }
+                                        
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.onreadystatechange = function(){
+                        if (xhttp.readyState == 4 && xhttp.status == 200){
+                            //console.log(xhttp.responseText);
+                            var featureHistory = JSON.parse(xhttp.responseText);
+                            processSingleFeatureHistory(teamName, feature.FormattedID, featureHistory);
+                        }
+                    };
+                    xhttp.open("POST", "https://rally1.rallydev.com/analytics/v2.0/service/rally/workspace/25361005450/artifact/snapshot/query.js", true);
+                    xhttp.setRequestHeader("Content-type", "application/json");
+                    //xhttp.send(JSON.stringify(payload));                    
+                };                    
+            }); 
+        }
+        
+        var processSingleFeatureHistory = function(teamName, featureId, featureHistory){
+            var results = featureHistory.Results;
+            var featureRelease = 0;
+            //results.forEach(function(result){if (result.hasOwnProperty('Release')){featureRelease = result.Release;}});
+            //console.log(teamName+" "+featureId);
+        }
+                
+        var getIterationData = function(results){
+        
+            var invalidTeams = ["'Teams", "Core Services Team", "Information Engineering"];
+            for (var i=0; i<results.length; i++){
+                var ci = results[i];
+                var sprintName = ci.Name;
+                var teamName = ci.Project._refObjectName;
+                var resource = ci.Resources || 0;
+                
+                if (arrRelease.indexOf(getPIName(sprintName))>-1){
+                    if (invalidTeams.indexOf(teamName) === -1) {
+                        if (arrTeam.indexOf(teamName) === -1){arrTeam.push(teamName);}
+                        if (arrSprint.indexOf(sprintName) === -1){arrSprint.push(sprintName);}
+
+                        if (typeof arrIteration[sprintName] === 'undefined'){
+                            arrIteration[sprintName] = {
+                                Name: sprintName,
+                                Resource: {Total: 0},
+                                PlanEstimate: {Total: 0},
+                                Accepted: {Total: 0},
+                                CumulativePlannedPoints: {Total: 0},
+                                CumulativeAcceptedPoints: {Total: 0},
+                                HighSeverityDefect: {Total: 0},
+                                OverallStatus: {}
+                            };
+                        }
+                        arrIteration[sprintName].Resource[teamName] = resource;
+                        arrIteration[sprintName].Resource.Total += resource;
+                        arrIteration[sprintName].PlanEstimate[teamName] = 0;
+                        arrIteration[sprintName].Accepted[teamName] = 0;
+                        arrIteration[sprintName].HighSeverityDefect[teamName] = 0;
+                        arrIteration[sprintName].OverallStatus[teamName] = extractStatus(ci.Notes);
+                    }
+                }
+            }
+            arrTeam.sort();
+            arrSprint.sort();
+
+            var queryConfigTeamSprint = [];
+
+            for (var j=0; j<arrSprint.length; j++){
+                var sprintName = arrSprint[j];
+                queryConfigTeamSprint.push ({
+                    type : 'hierarchicalrequirement',
+                    key : 'sprint'+j+'story',
+                    query: '(Iteration.Name = "'+sprintName+'")',
+                    fetch: 'FormattedID,Name,ScheduleState,PlanEstimate,Project'});
+                queryConfigTeamSprint.push ({
+                    type : 'defect',
+                    key : 'sprint'+j+'defect',
+                    query: '(Iteration.Name = "'+sprintName+'")',
+                    fetch: 'FormattedID,Name,ScheduleState,PlanEstimate,Project,Severity'});
+            }
+
+            rallyDataSource.findAll(queryConfigTeamSprint, processData);
+        };
+
+        var processData = function(results) {
+        
+            for (var j=0; j<arrSprint.length; j++){
+                var keyStory = "sprint"+j+"story";
+                var keyDefect = "sprint"+j+"defect";
+                var sprintName = arrSprint[j];
+                var ci = arrIteration[sprintName];
+
+                results[keyStory].forEach(function(story){
+                    var teamName = story.Project._refObjectName;
+                    var fltPlanEst = parseFloat(story.PlanEstimate || 0);
+
+                    ci.PlanEstimate.Total += fltPlanEst;
+                    if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
+                    ci.PlanEstimate[teamName] += fltPlanEst;
+
+                    if (story.ScheduleState==="Accepted by Product Owner"){
+                        ci.Accepted.Total += fltPlanEst;
+                        if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
+                        ci.Accepted[teamName] += fltPlanEst;
+                    }
+                });
+                results[keyDefect].forEach(function(defect){
+                    var teamName = defect.Project._refObjectName;
+                    var severity = defect.Severity; 
+                    var fltPlanEst = parseFloat(defect.PlanEstimate || 0);
+
+                    ci.PlanEstimate.Total += fltPlanEst;
+                    if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
+                    ci.PlanEstimate[teamName] += fltPlanEst;
+
+                    if (defect.ScheduleState==="Accepted by Product Owner"){
+                        ci.Accepted.Total += fltPlanEst;
+                        if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
+                        ci.Accepted[teamName] += fltPlanEst;
+                    }                    
+                    if (severity=="Crash/Data Loss"){ci.HighSeverityDefect[teamName] += 1}
+                });
+            }
+
+            arrRelease.forEach(function(piName){                
+                arrIteration[piName] = {
+                    Name: piName,
+                    Resource: {Total: 0},
+                    PlanEstimate: {Total: 0},
+                    Accepted: {Total: 0},
+                    HighSeverityDefect: {Total: 0}
+                };
+                arrTeam.forEach(function(teamName){
+                    arrIteration[piName].Resource[teamName]=0;
+                    arrIteration[piName].PlanEstimate[teamName]=0;
+                    arrIteration[piName].Accepted[teamName]=0;
+                });
+            });
+
+            arrRelease.forEach(function(piName){
+                var cumulativePlanned = 0;
+                var cumulativeAccepted = 0;
+                arrSprint.forEach(function(sprintName){
+                    if (isInThisPI(piName, sprintName)){
+                        var ci = arrIteration[sprintName];
+                        arrIteration[piName].PlanEstimate.Total += ci.PlanEstimate.Total;
+                        arrIteration[piName].Accepted.Total += ci.Accepted.Total;
+                        cumulativePlanned += arrIteration[sprintName].PlanEstimate.Total;
+                        cumulativeAccepted += arrIteration[sprintName].Accepted.Total;
+                        ci.CumulativePlannedPoints.Total = cumulativePlanned;
+                        ci.CumulativeAcceptedPoints.Total = cumulativeAccepted;
+                        arrTeam.forEach(function(teamName){
+                            arrIteration[piName].PlanEstimate[teamName] += ci.PlanEstimate[teamName];
+                            arrIteration[piName].Accepted[teamName] += ci.Accepted[teamName];
+                            ci.CumulativeAcceptedPoints[teamName] = arrIteration[piName].Accepted[teamName];
+                        }); 
+                    }
+                });
+                showTable(piName);
+            });
+        }
+        
+        var dataCallback = function(resultCollection){        
+            getReleaseData(resultCollection["keyRelease"]);
+            getIterationData(resultCollection["keyIteration"]);
+            getFeatureData(resultCollection["keyFeature"]);    
+            getFeatureHistoricalData();
+        }
+                
+        updateStatus("loading data from Rally Source...");
+        timeStart = performance.now();
+        // 'Team 41118404017   //'__WORKSPACE_OID__', //'__PROJECT_OID__', //'__PROJECT_SCOPING_UP__', //'__PROJECT_SCOPING_DOWN__'
+        
+        rallyDataSource = new rally.sdk.data.RallyDataSource(
+            '__WORKSPACE_OID__',
+            '__PROJECT_OID__',
+            '__PROJECT_SCOPING_UP__',
+            '__PROJECT_SCOPING_DOWN__');
+        rallyDataSource.setApiVersion('2.0');              
+        
+        var queryArray = [{
+                type: 'release',
+                key: 'keyRelease',
+                query: '',
+                fetch: 'Name,ReleaseDate,ReleaseStartDate,State'
+            },{
+                type: 'iteration',
+                key: 'keyIteration',
+                query: '',
+                fetch: 'Name,Resources,StartDate,EndDate,Project,State,Notes'
+            },{
+                type: 'PortfolioItem',
+                key: 'keyFeature',
+                query: '',
+                //fetch: 'Name,Project,State,FormattedID,Release,Iteration,ObjectID,PercentDoneByStoryPlanEstimate'
+                fetch: 'true'
+            },
+        ];
+        rallyDataSource.findAll(queryArray, dataCallback);
+        
+    };
+    rally.addOnLoad(mainEntrance);
+    
+    
+    
+    </script>
+</head>
+<body>
+    <div id="divTable">
+        <p id="status"></p>
+        <div id="resultDiv"></div>
+    </div>
+</body>
+</html>
