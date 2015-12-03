@@ -30,11 +30,12 @@
     var arrRelease = [];
     var arrFeature = {};
     
+    var currentPIName = "";
+    
     var task={
         "userstory":false,
         "defect":false,
         "feature":false,
-        "release":false,
         "iteration":false
     };
     
@@ -49,14 +50,27 @@
 
         var showTable = function(piName){
             timeEnd = performance.now();
-            updateStatus("Rally query takes "+((timeEnd-timeStart)/1000).toFixed(1)+" seconds.");
+            updateStatus("Rally query took "+((timeEnd-timeStart)/1000).toFixed(1)+" seconds.");
             addHR();
             showPITable(piName);
             showGeneralTable(piName);
             showTeamTable(piName);
-            showFeatureTable(piName);
         }
         
+        var cleanGeneralDiv = function(){
+            var divGeneral = document.getElementById(idResultDiv);
+            divGeneral.innerHTML = "";
+            arrTeam = [];
+            arrSprint = [];
+            arrIteration = [];
+            arrFeature = {};
+            task={
+                "userstory":false,
+                "defect":false,
+                "feature":false,
+                "iteration":false
+            };
+        }
 
         var showPITable = function(piName){
             var divGeneral = document.getElementById(idResultDiv);
@@ -143,11 +157,8 @@
         var showTeamTable = function(piName){
             var divGeneral = document.getElementById(idResultDiv);
             arrTeam.forEach(function(teamName){
-                var divTable = document.createElement("div");
-                divTable.id = piName + "_" + teamName;
-                divGeneral.appendChild(divTable);
                 var tableTeam = document.createElement("table");
-                divTable.appendChild(tableTeam);
+                divGeneral.appendChild(tableTeam);
 
                 var rowHeader = newRow(newHeader(teamName));
                 var rowOverallStatus = newRow(newCell("Overall Status"));
@@ -193,16 +204,9 @@
                     }
                 });
                 
-            });
-        }
-        
-        
-        var showFeatureTable = function(piName){
-            
-            arrTeam.forEach(function(teamName){
-                var divTeam = document.getElementById(piName + "_" + teamName);                
+                // feature table
                 var tableTeamFeature = document.createElement("table");
-                divTeam.appendChild(tableTeamFeature);
+                divGeneral.appendChild(tableTeamFeature);
                 
                 var rowHeader = newRow(newHeader("Feature"));
                 rowHeader.appendChild(newHeader("Name"));
@@ -216,7 +220,9 @@
                             
                 for (var key in arrFeature[teamName]){
                     var feature = arrFeature[teamName][key];
-                    if ((feature.Release!="")&&(feature.Release.substr(0, 5) == piName)){
+                    //if ((feature.Release!="")&&(feature.Release.substr(0, 5) == currentPIName)){
+                        
+                    
                         var rowFeature = newRow(newCell(feature.FormattedID));
                         rowFeature.appendChild(newCell(feature.Name));
                         rowFeature.appendChild(newCell(feature.Ready));
@@ -224,10 +230,13 @@
                         rowFeature.appendChild(newCell(feature.PlannedPoints));
                         rowFeature.appendChild(newCell(feature.AcceptedRate));
                         rowFeature.appendChild(newCell(feature.Release));
+                        rowFeature.appendChild(newCell(currentPIName));
                         tableTeamFeature.appendChild(rowFeature);
                         //arrSprint.forEach(function(sprintName){if (isInThisPI(piName, sprintName)){rowFeature.appendChild(newCell("-"))}});
-                    }
+                    //}
                 };
+                
+                
             });
         }
 
@@ -350,7 +359,7 @@
             var hasFailure = lowerNotes.indexOf("fail")>-1;
             if (hasSuccess && hasFailure) {return "???";}
             else if (hasSuccess) {return "Success"}
-            else if (hasFailure) {return "Failure"}
+            else if (hasFailure) {return "Failed"}
             else {return "N/A"}
         }
         
@@ -368,7 +377,14 @@
                     var piNumber = parseInt(releaseName.substr(3, 2));
                     if (piNumber > 10){
                         var piName = releaseName.substr(0, 5);
-                        if (arrRelease.indexOf(piName)==-1){arrRelease.push(piName)}
+                        if (arrRelease.indexOf(piName)==-1){
+                            arrRelease.push(piName);
+                            var select = document.getElementById("dropdownRelease");
+                            var opt = document.createElement("option");
+                            opt.value = piName;
+                            opt.innerText = releaseName;
+                            select.appendChild(opt);
+                        }
                     }
                 }
             });
@@ -398,6 +414,8 @@
                     };
                 }
             });
+            task.feature = true;
+            
         };
         
         var getFeatureHistoricalData = function(){
@@ -479,6 +497,23 @@
             arrTeam.sort();
             arrSprint.sort();
             task.iteration = true;
+            
+            Ext.create('Rally.data.WsapiDataStore', {
+                model: 'PortfolioItem/Feature',
+                fetch: ['FormattedID','Name','Project','Ready','AcceptedLeafStoryPlanEstimateTotal','LeafStoryPlanEstimateTotal','PercentDoneByStoryPlanEstimate','Release'],
+                limit: Infinity,
+                context: {
+                    project: '/project/41118404017',
+                    projectScopeUp: false,
+                    projectScopeDown: true
+                },
+                autoLoad: true,
+                listeners: {
+                    load: function(store, data){
+                        getFeatureData(data);
+                    },
+                }
+            });
             
             Ext.create('Rally.data.WsapiDataStore', {
                 model: 'User Story',
@@ -570,7 +605,7 @@
         }
         
         var processPIData = function() {
-            if (task.userstory && task.defect){            
+            if (task.userstory && task.defect && task.feature && task.iteration){
                 arrRelease.forEach(function(piName){                
                     arrIteration[piName] = {
                         Name: piName,
@@ -605,16 +640,13 @@
                             }); 
                         }
                     });
-                    showTable(piName);
                 });
+                console.log(arrFeature);
+                showTable(currentPIName);
             }
         }
         
         // start from here
-        updateStatus("loading data from Rally Source...");
-        timeStart = performance.now();
-        
-    
         Ext.create('Rally.data.WsapiDataStore', {
             model: 'release',
             fetch: ['Name','ReleaseDate','ReleaseStartDate','State'],
@@ -632,39 +664,34 @@
             }
         });
         
-        Ext.create('Rally.data.WsapiDataStore', {
-            model: 'iteration',
-            fetch: ['Name','PlannedVelocity','StartDate','EndDate','Project','State','Notes'],
-            limit: Infinity,
-            context: {
-                project: '/project/41118404017',
-                projectScopeUp: false,
-                projectScopeDown: true
-            },
-            autoLoad: true,
-            listeners: {
-                load: function(store, data){
-                    getIterationData(data);
+        var button = document.getElementById("buttonSubmit");
+        button.onclick = function(){
+            cleanGeneralDiv();
+            updateStatus("loading data from Rally Source...");
+            timeStart = performance.now();
+            
+            var select = document.getElementById("dropdownRelease");
+            currentPIName = select.options[select.selectedIndex].value;
+            
+            Ext.create('Rally.data.WsapiDataStore', {
+                model: 'iteration',
+                fetch: ['Name','PlannedVelocity','StartDate','EndDate','Project','State','Notes'],
+                limit: Infinity,
+                context: {
+                    project: '/project/41118404017',
+                    projectScopeUp: false,
+                    projectScopeDown: true
                 },
-            }
-        });
-        
-        Ext.create('Rally.data.WsapiDataStore', {
-            model: 'PortfolioItem/Feature',
-            fetch: ['FormattedID','Name','Project','Ready','AcceptedLeafStoryPlanEstimateTotal','LeafStoryPlanEstimateTotal','PercentDoneByStoryPlanEstimate','Release'],
-            limit: Infinity,
-            context: {
-                project: '/project/41118404017',
-                projectScopeUp: false,
-                projectScopeDown: true
-            },
-            autoLoad: true,
-            listeners: {
-                load: function(store, data){
-                    getFeatureData(data);
-                },
-            }
-        });
+                autoLoad: true,
+                listeners: {
+                    load: function(store, data){
+                        getIterationData(data);
+                    },
+                }
+            });
+            
+
+        }
     };
     Rally.onReady(mainEntrance);
     
@@ -672,7 +699,8 @@
 </head>
 <body>
     <div class="input">
-        <select></select>
+        <select id="dropdownRelease"></select>
+        <button id="buttonSubmit">SUBMIT</button>
     </div>
     <div id="divTable">
         <p id="status"></p>
