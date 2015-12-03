@@ -18,6 +18,7 @@
         }
         div#resultDiv table{
             margin: 20px;
+            width: 90%;
         }
     </style>
     <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
@@ -40,10 +41,8 @@
     };
     
     var timeStart;
-    var timeEnd;
-    
-    var idResultDiv = "resultDiv";
-    
+    var timeEnd;    
+    var idResultDiv = "resultDiv";    
     var project_ObjectID = "41118404017";
     
     function mainEntrance() {
@@ -157,6 +156,7 @@
         var showTeamTable = function(piName){
             var divGeneral = document.getElementById(idResultDiv);
             arrTeam.forEach(function(teamName){
+                addHR();
                 var tableTeam = document.createElement("table");
                 divGeneral.appendChild(tableTeam);
 
@@ -214,26 +214,23 @@
                 rowHeader.appendChild(newHeader("AcceptedPoints"));
                 rowHeader.appendChild(newHeader("PlannedPoints"));
                 rowHeader.appendChild(newHeader("AcceptedRate(%)"));
-                rowHeader.appendChild(newHeader("Release"));
+                //rowHeader.appendChild(newHeader("Release"));
                 tableTeamFeature.appendChild(rowHeader); 
                 //arrSprint.forEach(function(sprintName){if (isInThisPI(piName, sprintName)){rowHeader.appendChild(newCell(sprintName))}});
                             
                 for (var key in arrFeature[teamName]){
                     var feature = arrFeature[teamName][key];
-                    //if ((feature.Release!="")&&(feature.Release.substr(0, 5) == currentPIName)){
-                        
-                    
+                    if ((feature.Release!="")&&(feature.Release.substr(0, 5) == piName)){
                         var rowFeature = newRow(newCell(feature.FormattedID));
                         rowFeature.appendChild(newCell(feature.Name));
                         rowFeature.appendChild(newCell(feature.Ready));
                         rowFeature.appendChild(newCell(feature.AcceptedPoints));
                         rowFeature.appendChild(newCell(feature.PlannedPoints));
-                        rowFeature.appendChild(newCell(feature.AcceptedRate));
-                        rowFeature.appendChild(newCell(feature.Release));
-                        rowFeature.appendChild(newCell(currentPIName));
+                        rowFeature.appendChild(newCell(safeRate(feature.AcceptedRate, 1)));
+                        //rowFeature.appendChild(newCell(feature.Release));
                         tableTeamFeature.appendChild(rowFeature);
                         //arrSprint.forEach(function(sprintName){if (isInThisPI(piName, sprintName)){rowFeature.appendChild(newCell("-"))}});
-                    //}
+                    }
                 };
                 
                 
@@ -247,21 +244,21 @@
                 datasets: [
                     {
                         label: "Plan Burndown",
-                        fillColor: "rgba(220,220,220,0.2)",
-                        strokeColor: "rgba(220,220,220,1)",
-                        pointColor: "rgba(220,220,220,1)",
-                        pointStrokeColor: "#fff",
-                        pointHighlightFill: "#fff",
+                        fillColor: "rgba(200,200,200,0.3)",
+                        strokeColor: "#66ff66",
+                        pointColor: "#66ff66",
+                        pointStrokeColor: "#66ff66",
+                        pointHighlightFill: "#66ff66",
                         pointHighlightStroke: "rgba(220,220,220,1)",
                         data: arrData1
                     },
                     {
                         label: "Actual Burndown",
                         fillColor: "rgba(151,187,205,0.2)",
-                        strokeColor: "rgba(151,187,205,1)",
-                        pointColor: "rgba(151,187,205,1)",
-                        pointStrokeColor: "#fff",
-                        pointHighlightFill: "#fff",
+                        strokeColor: "#ff9900",
+                        pointColor: "#ff9900",
+                        pointStrokeColor: "#ff9900",
+                        pointHighlightFill: "#ff9900",
                         pointHighlightStroke: "rgba(151,187,205,1)",
                         data: arrData2
                     }
@@ -283,7 +280,8 @@
                 datasetStroke : true,
                 datasetStrokeWidth : 2,
                 datasetFill : true,
-                legendTemplate : ""
+                legendTemplate : "<ul><% for (var i=0; i<datasets.length; i++){%><li><nobr style=\"background-color:<%=datasets[i].strokeColor%>\">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</nobr><nobr>&nbsp;<%if(datasets[i].label){%><%=datasets[i].label%><%}%></nobr></li><%}%></ul>"
+
             };
 
             var canvasRef = document.createElement("canvas");
@@ -292,6 +290,10 @@
             divCanvas.appendChild(canvasRef);
             var ctx = canvasRef.getContext("2d");
             var lineChart = new Chart(ctx).Line(data, options);
+            var legend = lineChart.generateLegend();
+            var divLegend = document.createElement("div");
+            divLegend.innerHTML = legend;
+            divCanvas.appendChild(divLegend);
         }
 
         var newCell = function(text){
@@ -641,7 +643,6 @@
                         }
                     });
                 });
-                console.log(arrFeature);
                 showTable(currentPIName);
             }
         }
