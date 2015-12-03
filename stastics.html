@@ -16,9 +16,12 @@
             padding-right:10px;
             padding-bottom:10px;
         }
+        div#resultDiv table{
+            margin: 20px;
+        }
     </style>
-    <script src="/apps/1.32/sdk.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.min.js"></script>
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/1.0.2/Chart.min.js"></script>
     <script type="text/javascript">
 
     var arrTeam = [];
@@ -27,12 +30,21 @@
     var arrRelease = [];
     var arrFeature = {};
     
+    var task={
+        "userstory":false,
+        "defect":false,
+        "feature":false,
+        "release":false,
+        "iteration":false
+    };
+    
     var timeStart;
     var timeEnd;
     
     var idResultDiv = "resultDiv";
-    var rallyDataSource;
-
+    
+    var project_ObjectID = "41118404017";
+    
     function mainEntrance() {
 
         var showTable = function(piName){
@@ -55,10 +67,10 @@
             divSub.appendChild(tablePI);
             
             var rowTotalPtPlanned = newRow(newCell("Total Points Planned for "+piName));
-            rowTotalPtPlanned.appendChild(newCell(arrIteration[piName].PlanEstimate.Total));
+            rowTotalPtPlanned.appendChild(newCell(arrIteration[piName].PlanEstimate.Total.toFixed(1)));
             
             var rowTotalPtAccepted = newRow(newCell("Total Points Accepted for "+piName));
-            rowTotalPtAccepted.appendChild(newCell(arrIteration[piName].Accepted.Total));
+            rowTotalPtAccepted.appendChild(newCell(arrIteration[piName].Accepted.Total.toFixed(1)));
             
             var rowAcceptedRate = newRow(newCell("% Points Accepted"));
             rowAcceptedRate.appendChild(newCell(safeRate(arrIteration[piName].Accepted.Total, arrIteration[piName].PlanEstimate.Total)));
@@ -130,7 +142,6 @@
 
         var showTeamTable = function(piName){
             var divGeneral = document.getElementById(idResultDiv);
-            var oneTimeToken = true;
             arrTeam.forEach(function(teamName){
                 var divTable = document.createElement("div");
                 divTable.id = piName + "_" + teamName;
@@ -163,10 +174,6 @@
                     var ci = arrIteration[sprintName];
 
                     if (isInThisPI(piName, sprintName)){
-                        if (oneTimeToken){
-                            //console.log(JSON.stringify(ci));
-                            oneTimeToken = false;
-                        }
                         var resource = ci.Resource[teamName];
                         var estimatePointTotal = arrIteration[piName].PlanEstimate[teamName];
                         var estimatePoint = ci.PlanEstimate[teamName] || 0;
@@ -197,27 +204,29 @@
                 var tableTeamFeature = document.createElement("table");
                 divTeam.appendChild(tableTeamFeature);
                 
-                var rowHeader = newRow(newCell("Feature"));
-                rowHeader.appendChild(newCell("Name"));
+                var rowHeader = newRow(newHeader("Feature"));
+                rowHeader.appendChild(newHeader("Name"));
+                rowHeader.appendChild(newHeader("IsReady"));
+                rowHeader.appendChild(newHeader("AcceptedPoints"));
+                rowHeader.appendChild(newHeader("PlannedPoints"));
+                rowHeader.appendChild(newHeader("AcceptedRate(%)"));
+                rowHeader.appendChild(newHeader("Release"));
                 tableTeamFeature.appendChild(rowHeader); 
-                arrSprint.forEach(function(sprintName){
-                    if (isInThisPI(piName, sprintName)){
-                        rowHeader.appendChild(newCell(sprintName));
-                    }
-                });
-                
+                //arrSprint.forEach(function(sprintName){if (isInThisPI(piName, sprintName)){rowHeader.appendChild(newCell(sprintName))}});
+                            
                 for (var key in arrFeature[teamName]){
                     var feature = arrFeature[teamName][key];
-                
-                    var rowFeature = newRow(newCell(feature.FormattedID));
-                    rowFeature.appendChild(newCell(feature.Name));
-                    tableTeamFeature.appendChild(rowFeature); 
-                            
-                    arrSprint.forEach(function(sprintName){
-                        if (isInThisPI(piName, sprintName)){
-                            rowFeature.appendChild(newCell("-"));
-                        }
-                    });
+                    if ((feature.Release!="")&&(feature.Release.substr(0, 5) == piName)){
+                        var rowFeature = newRow(newCell(feature.FormattedID));
+                        rowFeature.appendChild(newCell(feature.Name));
+                        rowFeature.appendChild(newCell(feature.Ready));
+                        rowFeature.appendChild(newCell(feature.AcceptedPoints));
+                        rowFeature.appendChild(newCell(feature.PlannedPoints));
+                        rowFeature.appendChild(newCell(feature.AcceptedRate));
+                        rowFeature.appendChild(newCell(feature.Release));
+                        tableTeamFeature.appendChild(rowFeature);
+                        //arrSprint.forEach(function(sprintName){if (isInThisPI(piName, sprintName)){rowFeature.appendChild(newCell("-"))}});
+                    }
                 };
             });
         }
@@ -351,8 +360,8 @@
         }
                 
         var getReleaseData = function(results){
-            for (var i=0; i<results.length; i++){
-                var release = results[i];
+            results.forEach(function(releaseObject){
+                var release = releaseObject.raw;
                 var releaseName = release.Name;
                 // only select PI 11 12 13 ...
                 if (releaseName.length >= 5){
@@ -362,7 +371,8 @@
                         if (arrRelease.indexOf(piName)==-1){arrRelease.push(piName)}
                     }
                 }
-            }
+            });
+            task.release = true;
         }
         
         var getFeatureData = function(results){            
@@ -370,30 +380,29 @@
                 arrFeature[teamName] = [];
             });
             
-            var count = 0;
-            results.forEach(function(feature){
-                console.log(feature);
-                
+            results.forEach(function(featureObject){
+                var feature = featureObject.raw;
                 var teamName = feature.Project.Name;
+                var release = "";
+                if (feature.Release !== null) {release = feature.Release._refObjectName;}
                 if (arrTeam.indexOf(teamName)>-1){
-                    if (count==1){
-                        //console.log(feature);
-                    }
-                    count++;
                     arrFeature[teamName][feature.FormattedID] = {
                         "FormattedID": feature.FormattedID,
                         "Name": feature.Name,
-                        "Project": feature.Project
+                        "Project": teamName,
+                        "Ready": feature.Ready,
+                        "AcceptedPoints": feature.AcceptedLeafStoryPlanEstimateTotal,
+                        "PlannedPoints": feature.LeafStoryPlanEstimateTotal,
+                        "AcceptedRate": feature.PercentDoneByStoryPlanEstimate,
+                        "Release": release
                     };
                 }
             });
-            //console.log("total feature: "+count);
         };
         
         var getFeatureHistoricalData = function(){
             var oneTimeToken = true;
             arrTeam.forEach(function(teamName){
-                //console.log(teamName);
                 for (var key in arrFeature[teamName]){
                     var feature = arrFeature[teamName][key];
                     var payload = {
@@ -415,7 +424,6 @@
                     var xhttp = new XMLHttpRequest();
                     xhttp.onreadystatechange = function(){
                         if (xhttp.readyState == 4 && xhttp.status == 200){
-                            //console.log(xhttp.responseText);
                             var featureHistory = JSON.parse(xhttp.responseText);
                             processSingleFeatureHistory(teamName, feature.FormattedID, featureHistory);
                         }
@@ -434,15 +442,13 @@
             //console.log(teamName+" "+featureId);
         }
                 
-        var getIterationData = function(results){
-        
+        var getIterationData = function(results){        
             var invalidTeams = ["'Teams", "Core Services Team", "Information Engineering"];
-            for (var i=0; i<results.length; i++){
-                var ci = results[i];
-                var sprintName = ci.Name;
-                var teamName = ci.Project._refObjectName;
-                var resource = ci.Resources || 0;
-                
+            results.forEach(function(iterationObject){
+                var iteration = iterationObject.raw;
+                var sprintName = iteration.Name;
+                var teamName = iteration.Project._refObjectName;
+                var resource = iteration.PlannedVelocity || 0;
                 if (arrRelease.indexOf(getPIName(sprintName))>-1){
                     if (invalidTeams.indexOf(teamName) === -1) {
                         if (arrTeam.indexOf(teamName) === -1){arrTeam.push(teamName);}
@@ -465,156 +471,209 @@
                         arrIteration[sprintName].PlanEstimate[teamName] = 0;
                         arrIteration[sprintName].Accepted[teamName] = 0;
                         arrIteration[sprintName].HighSeverityDefect[teamName] = 0;
-                        arrIteration[sprintName].OverallStatus[teamName] = extractStatus(ci.Notes);
+                        arrIteration[sprintName].OverallStatus[teamName] = extractStatus(iteration.Notes);
                     }
                 }
-            }
+            });
+            
             arrTeam.sort();
             arrSprint.sort();
-
-            var queryConfigTeamSprint = [];
-
-            for (var j=0; j<arrSprint.length; j++){
-                var sprintName = arrSprint[j];
-                queryConfigTeamSprint.push ({
-                    type : 'hierarchicalrequirement',
-                    key : 'sprint'+j+'story',
-                    query: '(Iteration.Name = "'+sprintName+'")',
-                    fetch: 'FormattedID,Name,ScheduleState,PlanEstimate,Project'});
-                queryConfigTeamSprint.push ({
-                    type : 'defect',
-                    key : 'sprint'+j+'defect',
-                    query: '(Iteration.Name = "'+sprintName+'")',
-                    fetch: 'FormattedID,Name,ScheduleState,PlanEstimate,Project,Severity'});
-            }
-
-            rallyDataSource.findAll(queryConfigTeamSprint, processData);
+            task.iteration = true;
+            
+            Ext.create('Rally.data.WsapiDataStore', {
+                model: 'User Story',
+                fetch: ['FormattedID','Name','ScheduleState','PlanEstimate','Project','Iteration'],
+                limit: Infinity,
+                context: {
+                    project: '/project/'+project_ObjectID,
+                    projectScopeUp: false,
+                    projectScopeDown: true
+                },
+                autoLoad: true,
+                listeners: {
+                    load: function(store, data){
+                        processUserStory(data);
+                    },
+                }
+            });
+            
+            Ext.create('Rally.data.WsapiDataStore', {
+                model: 'Defect',
+                fetch: ['FormattedID','Name','ScheduleState','PlanEstimate','Project','Severity','Iteration'],
+                limit: Infinity,
+                context: {
+                    project: '/project/'+project_ObjectID,
+                    projectScopeUp: false,
+                    projectScopeDown: true
+                },
+                autoLoad: true,
+                listeners: {
+                    load: function(store, data){
+                        processDefect(data);
+                    },
+                }
+            });            
         };
-
-        var processData = function(results) {
         
-            for (var j=0; j<arrSprint.length; j++){
-                var keyStory = "sprint"+j+"story";
-                var keyDefect = "sprint"+j+"defect";
-                var sprintName = arrSprint[j];
-                var ci = arrIteration[sprintName];
-
-                results[keyStory].forEach(function(story){
-                    var teamName = story.Project._refObjectName;
-                    var fltPlanEst = parseFloat(story.PlanEstimate || 0);
-
-                    ci.PlanEstimate.Total += fltPlanEst;
-                    if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
-                    ci.PlanEstimate[teamName] += fltPlanEst;
-
-                    if (story.ScheduleState==="Accepted by Product Owner"){
-                        ci.Accepted.Total += fltPlanEst;
-                        if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
-                        ci.Accepted[teamName] += fltPlanEst;
+        var processUserStory = function(results){
+            results.forEach(function(userStoryObject){
+                var userStory = userStoryObject.raw;
+                if (userStory.hasOwnProperty("Iteration") && userStory.Iteration != null){
+                    var sprintName = userStory.Iteration._refObjectName;
+                    if (arrSprint.indexOf(sprintName)>-1){
+                        var ci = arrIteration[sprintName];
+                        var teamName = userStory.Project._refObjectName;
+                        var fltPlanEst = parseFloat(userStory.PlanEstimate || 0);
+                        
+                        ci.PlanEstimate.Total += fltPlanEst;
+                        if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
+                        ci.PlanEstimate[teamName] += fltPlanEst;
+                        
+                        if (userStory.ScheduleState == "Accepted by Product Owner"){
+                            ci.Accepted.Total += fltPlanEst;
+                            if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
+                            ci.Accepted[teamName] += fltPlanEst;
+                        }
                     }
+                }            
+            });
+            task.userstory = true;
+            processPIData();
+        }
+
+        var processDefect = function(results){
+            results.forEach(function(defectObject){
+                var defect = defectObject.raw;
+                if (defect.hasOwnProperty("Iteration") && defect.Iteration != null){
+                    var sprintName = defect.Iteration._refObjectName;
+                    if (arrSprint.indexOf(sprintName)>-1){
+                        var ci = arrIteration[sprintName];
+                        var teamName = defect.Project._refObjectName;
+                        var severity = defect.Severity;
+                        var fltPlanEst = parseFloat(defect.PlanEstimate || 0);
+                    
+                        ci.PlanEstimate.Total += fltPlanEst;
+                        if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
+                        ci.PlanEstimate[teamName] += fltPlanEst;
+                        
+                        if (defect.ScheduleState == "Accepted by Product Owner"){
+                            ci.Accepted.Total += fltPlanEst;
+                            if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
+                            ci.Accepted[teamName] += fltPlanEst;
+                        }                    
+                        if (severity=="Crash/Data Loss"){ci.HighSeverityDefect[teamName] += 1}
+                    }
+                }
+            });
+            task.defect = true;
+            processPIData();
+        }
+        
+        var processPIData = function() {
+            if (task.userstory && task.defect){            
+                arrRelease.forEach(function(piName){                
+                    arrIteration[piName] = {
+                        Name: piName,
+                        Resource: {Total: 0},
+                        PlanEstimate: {Total: 0},
+                        Accepted: {Total: 0},
+                        HighSeverityDefect: {Total: 0}
+                    };
+                    arrTeam.forEach(function(teamName){
+                        arrIteration[piName].Resource[teamName]=0;
+                        arrIteration[piName].PlanEstimate[teamName]=0;
+                        arrIteration[piName].Accepted[teamName]=0;
+                    });
                 });
-                results[keyDefect].forEach(function(defect){
-                    var teamName = defect.Project._refObjectName;
-                    var severity = defect.Severity; 
-                    var fltPlanEst = parseFloat(defect.PlanEstimate || 0);
-
-                    ci.PlanEstimate.Total += fltPlanEst;
-                    if (typeof ci.PlanEstimate[teamName] === 'undefined'){ci.PlanEstimate[teamName] = 0;}
-                    ci.PlanEstimate[teamName] += fltPlanEst;
-
-                    if (defect.ScheduleState==="Accepted by Product Owner"){
-                        ci.Accepted.Total += fltPlanEst;
-                        if (typeof ci.Accepted[teamName] === 'undefined'){ci.Accepted[teamName] = 0;}
-                        ci.Accepted[teamName] += fltPlanEst;
-                    }                    
-                    if (severity=="Crash/Data Loss"){ci.HighSeverityDefect[teamName] += 1}
+                
+                arrRelease.forEach(function(piName){
+                    var cumulativePlanned = 0;
+                    var cumulativeAccepted = 0;
+                    arrSprint.forEach(function(sprintName){
+                        if (isInThisPI(piName, sprintName)){
+                            var ci = arrIteration[sprintName];
+                            arrIteration[piName].PlanEstimate.Total += ci.PlanEstimate.Total;
+                            arrIteration[piName].Accepted.Total += ci.Accepted.Total;
+                            cumulativePlanned += arrIteration[sprintName].PlanEstimate.Total;
+                            cumulativeAccepted += arrIteration[sprintName].Accepted.Total;
+                            ci.CumulativePlannedPoints.Total = cumulativePlanned;
+                            ci.CumulativeAcceptedPoints.Total = cumulativeAccepted;
+                            arrTeam.forEach(function(teamName){
+                                arrIteration[piName].PlanEstimate[teamName] += ci.PlanEstimate[teamName];
+                                arrIteration[piName].Accepted[teamName] += ci.Accepted[teamName];
+                                ci.CumulativeAcceptedPoints[teamName] = arrIteration[piName].Accepted[teamName];
+                            }); 
+                        }
+                    });
+                    showTable(piName);
                 });
             }
-
-            arrRelease.forEach(function(piName){                
-                arrIteration[piName] = {
-                    Name: piName,
-                    Resource: {Total: 0},
-                    PlanEstimate: {Total: 0},
-                    Accepted: {Total: 0},
-                    HighSeverityDefect: {Total: 0}
-                };
-                arrTeam.forEach(function(teamName){
-                    arrIteration[piName].Resource[teamName]=0;
-                    arrIteration[piName].PlanEstimate[teamName]=0;
-                    arrIteration[piName].Accepted[teamName]=0;
-                });
-            });
-
-            arrRelease.forEach(function(piName){
-                var cumulativePlanned = 0;
-                var cumulativeAccepted = 0;
-                arrSprint.forEach(function(sprintName){
-                    if (isInThisPI(piName, sprintName)){
-                        var ci = arrIteration[sprintName];
-                        arrIteration[piName].PlanEstimate.Total += ci.PlanEstimate.Total;
-                        arrIteration[piName].Accepted.Total += ci.Accepted.Total;
-                        cumulativePlanned += arrIteration[sprintName].PlanEstimate.Total;
-                        cumulativeAccepted += arrIteration[sprintName].Accepted.Total;
-                        ci.CumulativePlannedPoints.Total = cumulativePlanned;
-                        ci.CumulativeAcceptedPoints.Total = cumulativeAccepted;
-                        arrTeam.forEach(function(teamName){
-                            arrIteration[piName].PlanEstimate[teamName] += ci.PlanEstimate[teamName];
-                            arrIteration[piName].Accepted[teamName] += ci.Accepted[teamName];
-                            ci.CumulativeAcceptedPoints[teamName] = arrIteration[piName].Accepted[teamName];
-                        }); 
-                    }
-                });
-                showTable(piName);
-            });
         }
         
-        var dataCallback = function(resultCollection){        
-            getReleaseData(resultCollection["keyRelease"]);
-            getIterationData(resultCollection["keyIteration"]);
-            getFeatureData(resultCollection["keyFeature"]);    
-            //getFeatureHistoricalData();
-        }
-                
+        // start from here
         updateStatus("loading data from Rally Source...");
         timeStart = performance.now();
-        // 'Team 41118404017   //'__WORKSPACE_OID__', //'__PROJECT_OID__', //'__PROJECT_SCOPING_UP__', //'__PROJECT_SCOPING_DOWN__'
         
-        rallyDataSource = new rally.sdk.data.RallyDataSource(
-            '__WORKSPACE_OID__',
-            '__PROJECT_OID__',
-            '__PROJECT_SCOPING_UP__',
-            '__PROJECT_SCOPING_DOWN__');
-        rallyDataSource.setApiVersion('2.0');              
-        
-        var queryArray = [{
-                type: 'release',
-                key: 'keyRelease',
-                query: '',
-                fetch: 'Name,ReleaseDate,ReleaseStartDate,State'
-            },{
-                type: 'iteration',
-                key: 'keyIteration',
-                query: '',
-                fetch: 'Name,Resources,StartDate,EndDate,Project,State,Notes'
-            },{
-                type: 'PortfolioItem',
-                key: 'keyFeature',
-                query: '',
-                //fetch: 'Name,Project,State,FormattedID,Release,Iteration,ObjectID,PercentDoneByStoryPlanEstimate'
-                fetch: 'true'
+    
+        Ext.create('Rally.data.WsapiDataStore', {
+            model: 'release',
+            fetch: ['Name','ReleaseDate','ReleaseStartDate','State'],
+            limit: Infinity,
+            context: {
+                project: '/project/41118404017',
+                projectScopeUp: false,
+                projectScopeDown: true
             },
-        ];
-        rallyDataSource.findAll(queryArray, dataCallback);
+            autoLoad: true,
+            listeners: {
+                load: function(store, data){
+                    getReleaseData(data);
+                },
+            }
+        });
         
+        Ext.create('Rally.data.WsapiDataStore', {
+            model: 'iteration',
+            fetch: ['Name','PlannedVelocity','StartDate','EndDate','Project','State','Notes'],
+            limit: Infinity,
+            context: {
+                project: '/project/41118404017',
+                projectScopeUp: false,
+                projectScopeDown: true
+            },
+            autoLoad: true,
+            listeners: {
+                load: function(store, data){
+                    getIterationData(data);
+                },
+            }
+        });
+        
+        Ext.create('Rally.data.WsapiDataStore', {
+            model: 'PortfolioItem/Feature',
+            fetch: ['FormattedID','Name','Project','Ready','AcceptedLeafStoryPlanEstimateTotal','LeafStoryPlanEstimateTotal','PercentDoneByStoryPlanEstimate','Release'],
+            limit: Infinity,
+            context: {
+                project: '/project/41118404017',
+                projectScopeUp: false,
+                projectScopeDown: true
+            },
+            autoLoad: true,
+            listeners: {
+                load: function(store, data){
+                    getFeatureData(data);
+                },
+            }
+        });
     };
-    rally.addOnLoad(mainEntrance);
-    
-    
+    Rally.onReady(mainEntrance);
     
     </script>
 </head>
 <body>
+    <div class="input">
+        <select></select>
+    </div>
     <div id="divTable">
         <p id="status"></p>
         <div id="resultDiv"></div>
