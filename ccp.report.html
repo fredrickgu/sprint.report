@@ -56,7 +56,7 @@
     var timeStart;
     var timeEnd;
     var idResultDiv = "resultDiv";
-    var project_ObjectID = "41118404017";
+    var project_ObjectID = "26142219045";
     
     var asyncRef = window.parent.window.async;
 
@@ -534,9 +534,8 @@
                 model: 'PortfolioItem/Feature',
                 fetch: ['FormattedID','Name','Project','Ready','AcceptedLeafStoryPlanEstimateTotal','LeafStoryPlanEstimateTotal','PercentDoneByStoryPlanEstimate','Release','Owner'],
                 limit: Infinity,
-                context: {
-                    //project: '/project/'+project_ObjectID, need to use larger scope for features because many feature were not under 'Team 
-                    project: '/project/39215785906',
+                context: {                    
+                    project: '/project/'+project_ObjectID,
                     projectScopeUp: false,
                     projectScopeDown: true
                 },
