@@ -10,7 +10,7 @@
             width: 90%;
         }
         table,th,td{
-            border-collapse: collapse;
+        border-collapse: collapse;
             border: 1px solid;
         }
         td{
@@ -244,8 +244,6 @@
                         rowPointsDelivered.appendChild(newCell(Math.round(acceptedPoint)));
 
                         var defectList="";
-                        console.log(ci);
-                        console.log(teamName);
                         if (typeof ci.HighSeverityDefect[teamName]!=="undefined"){
                             ci.HighSeverityDefect[teamName].forEach(function(defectObject){
                                 var defectId = defectObject.FormattedID;

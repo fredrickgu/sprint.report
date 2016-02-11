@@ -258,12 +258,16 @@
                         rowPointsEstimated.appendChild(newCell(Math.round(estimatePoint)));
                         rowPointsDelivered.appendChild(newCell(Math.round(acceptedPoint)));
                         
-                        var defectList="";
-                        ci.HighSeverityDefect[teamName].forEach(function(defectObject){
-                            var defectId = defectObject.FormattedID;
-                            defectList +="<a href='"+getUrl(defectId)+"'>["+defectId+"&nbsp;]</a>";
-                        });
-                        rowHighSeverityDefect.appendChild(newCell(ci.HighSeverityDefect[teamName].length));
+                        var defectList="";                        
+                        if (typeof ci.HighSeverityDefect[teamName]!=="undefined" && ci.HighSeverityDefect[teamName].length >0){
+                            ci.HighSeverityDefect[teamName].forEach(function(defectObject){
+                                var defectId = defectObject.FormattedID;
+                                defectList +="<a href='"+getUrl(defectId)+"'>["+defectId+"&nbsp;]</a>";
+                            });
+                            rowHighSeverityDefect.appendChild(newCell(ci.HighSeverityDefect[teamName].length));
+                        } else {
+                            rowHighSeverityDefect.appendChild(newCell(0));
+                        }                        
                     }
                 }
             });
@@ -282,11 +286,14 @@
                 rowHeader.appendChild(newHeader("Iteration"));
                 rowHeader.appendChild(newHeader("Name"));
                 tableTeamDefect.appendChild(rowHeader);
+                
                 arrHighDefect.forEach(function(defectObj){
-                    var rowDefect = newRow(newCellLink(defectObj.FormattedID));
-                    rowDefect.appendChild(newCell((defectObj.Iteration==null)?"":defectObj.Iteration._refObjectName));
-                    rowDefect.appendChild(newCell(defectObj.Name));
-                    tableTeamDefect.appendChild(rowDefect);
+                    if (typeof defectObj !== "undefined"){
+                        var rowDefect = newRow(newCellLink(defectObj.FormattedID));
+                        rowDefect.appendChild(newCell((defectObj.Iteration==null)?"":defectObj.Iteration._refObjectName));
+                        rowDefect.appendChild(newCell(defectObj.Name));
+                        tableTeamDefect.appendChild(rowDefect);
+                    }
                 });
             }
         }
@@ -306,21 +313,23 @@
             
             var featureCount = 0;
             var arrOwner = arrTeamOwner[teamName];
-            arrOwner.forEach(function(ownerName){
-                arrFeature[ownerName].forEach(function(feature){
-                    if ((feature.Release!="")&&(feature.Release.substr(0, 5) == piName)){
-                        featureCount++;
-                        var rowFeature = newRow(newCellLink(feature.FormattedID));
-                        rowFeature.appendChild(newCell(feature.Name, "alignleft"));
-                        rowFeature.appendChild(newCell(feature.AcceptedPoints));
-                        rowFeature.appendChild(newCell(feature.PlannedPoints));
-                        rowFeature.appendChild(newCell(safeRate(feature.AcceptedRate, 1)));
-                        rowFeature.appendChild(newCell(feature.Owner));
-                        rowFeature.appendChild(newCell(feature.Project));
-                        tableTeamFeature.appendChild(rowFeature);
-                    }
+            if (typeof arrOwner !== "undefined"){
+                arrOwner.forEach(function(ownerName){
+                    arrFeature[ownerName].forEach(function(feature){
+                        if ((feature.Release!="")&&(feature.Release.substr(0, 5) == piName)){
+                            featureCount++;
+                            var rowFeature = newRow(newCellLink(feature.FormattedID));
+                            rowFeature.appendChild(newCell(feature.Name, "alignleft"));
+                            rowFeature.appendChild(newCell(feature.AcceptedPoints));
+                            rowFeature.appendChild(newCell(feature.PlannedPoints));
+                            rowFeature.appendChild(newCell(safeRate(feature.AcceptedRate, 1)));
+                            rowFeature.appendChild(newCell(feature.Owner));
+                            rowFeature.appendChild(newCell(feature.Project));
+                            tableTeamFeature.appendChild(rowFeature);
+                        }
+                    });
                 });
-            });
+            }
             if (teamName == "DIA Team"){
                 var pNote = document.createElement("p");
                 pNote.textContent = "N/A (defined in GCC features )";
